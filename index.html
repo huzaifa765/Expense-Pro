@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Expense Tracker Pro</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #fff;
+    }
+
+    .slider {
+      position: relative;
+      height: 250px;
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      color: white;
+      transition: 0.5s;
+    }
+
+    .s1 { background: linear-gradient(135deg, #ff4d6d, #ff758f); }
+    .s2 { background: linear-gradient(135deg, #ff758f, #ff9a9e); }
+    .s3 { background: linear-gradient(135deg, #ff4d6d, #ff9a9e); }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0px 5px 20px rgba(0,0,0,0.1);
+    }
+
+    input, select {
+      padding: 12px;
+      width: 100%;
+      margin-bottom: 12px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+    }
+
+    button {
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      margin: 5px;
+    }
+
+    .primary {
+      background: linear-gradient(90deg, #ff4d6d, #ff758f);
+      color: white;
+    }
+
+    .danger {
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+      color: white;
+    }
+
+    .expense {
+      padding: 12px;
+      border-radius: 10px;
+      background: #f9f9f9;
+      margin-bottom: 10px;
+      border-left: 5px solid #ff4d6d;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<!-- SLIDER -->
+<div class="slider">
+  <div class="slide s1">💰 Track Expenses Onchain</div>
+  <div class="slide s2">🌍 Share Public Spending</div>
+  <div class="slide s3">🚀 Built on Base</div>
+</div>
+
+<div class="container">
+
+<div class="card">
+  <button class="primary" onclick="connectWallet()">Connect Wallet</button>
+  <button class="danger" onclick="disconnectWallet()">Disconnect</button>
+  <p id="status"></p>
+</div>
+
+<div class="card">
+  <input type="number" id="amount" placeholder="Amount">
+  <select id="category">
+    <option>Food</option>
+    <option>Travel</option>
+    <option>Bills</option>
+    <option>Shopping</option>
+  </select>
+  <input type="text" id="note" placeholder="Note">
+  <label><input type="checkbox" id="publicToggle"> Public 🌍</label>
+  <button class="primary" onclick="addExpense()">Add Expense</button>
+</div>
+
+<div class="card">
+  <p id="total">Total Spent: 0</p>
+</div>
+
+<div class="card">
+  <button onclick="loadMy()">My Expenses</button>
+  <button onclick="loadPublic()">Public Feed</button>
+</div>
+
+<div class="card">
+  <div id="list"></div>
+</div>
+
+<div class="card">
+  <button class="danger" onclick="withdraw()">Withdraw</button>
+</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.2/dist/ethers.umd.min.js"></script>
+
+<script>
+
+let contract;
+let signer;
+
+const contractAddress = "0x295d3f81be8539391ad0b2d289695d9f261fec55";
+
+const abi = [
+  "function addExpense(uint,string,string,bool) payable",
+  "function getMyExpenses() view returns (tuple(uint amount,string category,string note,bool isPublic,uint timestamp)[])",
+  "function getPublicExpenses() view returns (tuple(uint amount,string category,string note,bool isPublic,uint timestamp)[])",
+  "function deleteExpense(uint)",
+  "function getTotalSpent() view returns (uint)",
+  "function withdraw()"
+];
+
+async function connectWallet() {
+  try {
+    if (!window.ethereum) {
+      alert("Install MetaMask");
+      return;
+    }
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+
+    signer = await provider.getSigner();
+
+    contract = new ethers.Contract(contractAddress, abi, signer);
+
+    document.getElementById("status").innerText = "Connected ✅";
+
+  } catch (err) {
+    console.log(err);
+    document.getElementById("status").innerText = "Error ❌";
+  }
+}
+
+function disconnectWallet() {
+  contract = null;
+  signer = null;
+  document.getElementById("status").innerText = "Disconnected ❌";
+}
+
+async function addExpense() {
+  try {
+    const amount = document.getElementById("amount").value;
+    const category = document.getElementById("category").value;
+    const note = document.getElementById("note").value;
+    const isPublic = document.getElementById("publicToggle").checked;
+
+    const tx = await contract.addExpense(amount, category, note, isPublic, {
+      value: "100000000000000"
+    });
+
+    await tx.wait();
+    document.getElementById("status").innerText = "Saved ✅";
+
+  } catch {
+    document.getElementById("status").innerText = "Error ❌";
+  }
+}
+
+async function loadMy() {
+  const data = await contract.getMyExpenses();
+  let html = "";
+
+  data.forEach((e,i)=>{
+    html += `
+      <div class="expense">
+        💰 ${e.amount} | ${e.category}
+        <br>${e.note}
+        <br>${e.isPublic ? "🌍 Public" : "🔒 Private"}
+        <br><button onclick="del(${i})">Delete</button>
+      </div>
+    `;
+  });
+
+  document.getElementById("list").innerHTML = html;
+
+  const t = await contract.getTotalSpent();
+  document.getElementById("total").innerText = "Total: " + t;
+}
+
+async function loadPublic() {
+  const data = await contract.getPublicExpenses();
+  let html = "";
+
+  data.forEach(e=>{
+    html += `
+      <div class="expense">
+        💰 ${e.amount} | ${e.category}
+        <br>${e.note}
+        <br>🌍 Public
+      </div>
+    `;
+  });
+
+  document.getElementById("list").innerHTML = html;
+}
+
+async function del(i){
+  const tx = await contract.deleteExpense(i);
+  await tx.wait();
+  loadMy();
+}
+
+async function withdraw(){
+  const tx = await contract.withdraw();
+  await tx.wait();
+  document.getElementById("status").innerText = "Withdrawn 💸";
+}
+
+/* SLIDER FIX */
+let index = 0;
+const slides = document.querySelectorAll(".slide");
+
+setInterval(()=>{
+  slides.forEach((s,i)=>{
+    s.style.transform = `translateX(${(i-index)*100}%)`;
+  });
+  index = (index + 1) % slides.length;
+}, 2500);
+
+</script>
+
+</body>
+</html>
